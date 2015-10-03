@@ -332,6 +332,8 @@ begin
     Result := Self
   else if (op in [op_Plus, op_PlusAsgn]) and (BaseType = ltDynArray) and HasType() and FPType.CompatibleWith(ARight) then
     Result := Self
+  else if (op = op_Plus) and (BaseType = ltDynArray) and HasType() and (ARight <> nil) and (ARight is ClassType) and FPType.Equals(TLapeType_DynArray(ARight).FPType) then
+    Result := Self
   else
     Result := inherited;
 end;
@@ -419,6 +421,7 @@ var
   IndexVar, tmpResVar: TResVar;
   wasConstant: Boolean;
   Node: TLapeTree_Base;
+  Expr,IdxExpr: TLapeTree_ExprBase;
 begin
   Assert(FCompiler <> nil);
   Assert(ALeft.VarType is TLapeType_Pointer);
@@ -655,6 +658,41 @@ begin
   begin
     Dest := NullResVar;
     Result := Eval(op_Plus, ALeft, ALeft, ARight, [], Offset, Pos);
+  end  
+  else if (op = op_Plus) and (BaseType = ltDynArray) and CompatibleWith(ARight.VarType) then
+  begin
+    Result := NullResVar;
+    Result.VarType := Self;
+    FCompiler.getDestVar(Dest, Result, op);
+
+    if (Result.VarPos.MemPos = mpStack) then
+    begin
+      tmpVar := FCompiler.getTempVar(Self);
+      Result := _ResVar.New(tmpVar);
+    end;
+
+    wasConstant := not Result.Writeable;
+    if wasConstant then Result.Writeable := True;
+
+    Result := Eval(op_Assign, tmpResVar, Result, ALeft, [], Offset, Pos);
+
+    IndexVar := _ResVar.New(FCompiler.getTempVar(ltInt32));
+    with TLapeTree_InternalMethod_Insert.Create(FCompiler, Pos) do
+    try
+      addParam(TLapeTree_ResVar.Create(ARight, FCompiler, Pos));
+      addParam(TLapeTree_ResVar.Create(Result.IncLock(2), FCompiler, Pos)); //hum hum
+
+      IdxExpr := TLapeTree_ResVar.Create(IndexVar.IncLock(2), FCompiler, Pos);
+      Expr := TLapeTree_InternalMethod_Length.Create(IdxExpr);
+      TLapeTree_InternalMethod_Length(Expr).addParam(TLapeTree_ResVar.Create(Result.IncLock(), IdxExpr));
+      addParam(Expr);
+
+      Compile(Offset);
+    finally
+      Free();
+    end;
+    IndexVar.Spill(1);
+    if wasConstant then Result.Writeable := False;
   end
   else
     Result := inherited;
