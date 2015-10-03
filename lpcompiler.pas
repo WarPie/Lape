@@ -631,6 +631,7 @@ procedure TLapeCompiler.InitBaseDefinitions;
 
     addGlobalVar(OLMethod.NewGlobalVar('ToString')).isConstant := True;
   end;
+var OP:EOperator;
 begin
   addBaseDefine('Lape');
   addBaseDefine('Sesquipedalian');
@@ -717,6 +718,9 @@ begin
     _LapeDelete +
     _LapeInsert
   );
+  
+  for OP in OverloadableOperators do
+    addDelayedCode('procedure __'+op_name[OP]+'__; begin end;' + LineEnding);
 end;
 
 function TLapeCompiler.EnsureExpression(Node: TLapeTree_ExprBase): TLapeTree_ExprBase;
@@ -862,6 +866,8 @@ var
         Result := (lcoScopedEnums in FOptions)
       else if (Def = 'continuecase') then
         Result := (lcoContinueCase in FOptions)
+      else if (Def = 'opoverload') then
+        Result := (lcoOpOverload in FOptions)
       else
         Result := False;
     end;
@@ -1007,6 +1013,8 @@ begin
     setOption(lcoScopedEnums)
   else if (Directive = 'continuecase') then
     setOption(lcoContinueCase)
+  else if (Directive = 'opoverload') then
+    setOption(lcoOpOverload)
   else
     Result := False;
 end;

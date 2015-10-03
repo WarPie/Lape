@@ -26,7 +26,8 @@ type
     lcoLooseSyntax,                    // {$X} {$EXTENDEDSYNTAX}
     lcoAutoInvoke,                     // {$F} {$AUTOINVOKE}
     lcoScopedEnums,                    // {$S} {$SCOPEDENUMS}
-    lcoContinueCase                    //      {$CONTINUECASE}
+    lcoContinueCase,                   //      {$CONTINUECASE}
+    lcoOpOverload                      //      {$OPOVERLOAD}
   );
   ECompilerOptionsSet = set of ECompilerOption;
   PCompilerOptionsSet = ^ECompilerOptionsSet;
@@ -692,7 +693,7 @@ implementation
 
 uses
   lpvartypes_ord, lpvartypes_array,
-  lpexceptions, lpeval, lpinterpreter;
+  lpexceptions, lpeval, lpinterpreter, lptree;
 
 function getTypeArray(Arr: array of TLapeType): TLapeTypeArray;
 var
@@ -1495,6 +1496,8 @@ end;
 function TLapeType.EvalRes(Op: EOperator; Right: TLapeGlobalVar; Flags: ELapeEvalFlags = []): TLapeType;
 var
   d: TLapeDeclArray;
+  method:TLapeTree_InternalMethod;
+  tmpRes:TLapeType;
 begin
   if (Right = nil) then
     Result := EvalRes(Op, TLapeType(nil), Flags)
@@ -1518,6 +1521,17 @@ begin
      Right.HasType()
   then
     Result := EvalRes(Op, Right.VarType, Flags);
+    
+  if (lcoOpOverload in FCompiler.FOptions) and (Result = nil) and(Right <> nil) and
+     (op in OverloadableOperators) and Right.HasType() and (Self.BaseType <> ltUnknown) then
+  begin
+    method := TLapeTree_InternalMethod_OperatorOverload.Create(op, FCompiler, nil);
+    method.addParam(TLapeTree_ResVar.Create(_ResVar.New(FCompiler.getTempVar(Self)), FCompiler, nil));
+    method.addParam(TLapeTree_ResVar.Create(_ResVar.New(Right), FCompiler, nil));
+    tmpRes := method.resType;
+    if tmpRes <> nil then Result := tmpRes;
+    method.Free();
+  end;
 end;
 
 function TLapeType.CanEvalConst(Op: EOperator; Left, Right: TLapeGlobalVar): Boolean;
@@ -1763,6 +1777,8 @@ function TLapeType.Eval(Op: EOperator; var Dest: TResVar; Left, Right: TResVar; 
 
 var
   EvalProc: TLapeEvalProc;
+  tmpResVar: TResVar;
+  method:TLapeTree_InternalMethod;
 begin
   Result := NullResVar;
   Assert(FCompiler <> nil);
@@ -1792,6 +1808,18 @@ begin
     else
       EvalProc := nil;
 
+    if (lcoOpOverload in FCompiler.FOptions) and (not ValidEvalFunction(EvalProc)) and 
+       (op in OverloadableOperators) and Right.HasType() and Left.HasType() and (not Result.HasType()) then
+    begin
+      method := TLapeTree_InternalMethod_OperatorOverload.Create(op, FCompiler, Pos);
+      method.addParam(TLapeTree_ResVar.Create(Left, FCompiler, Pos));
+      method.addParam(TLapeTree_ResVar.Create(Right, FCompiler, Pos));
+      tmpResVar := method.Compile(Offset);
+      method.Free();
+      if tmpResVar.HasType() then 
+        Exit(tmpResVar);
+    end;
+      
     if (not Result.HasType()) or (not ValidEvalFunction(EvalProc)) then
       if (op = op_Dot) and ValidFieldName(Right) then
         Exit(EvalDot(PlpString(Right.VarPos.GlobalVar.Ptr)^))
