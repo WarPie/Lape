@@ -1466,7 +1466,8 @@ end;
 function TLapeType.EvalRes(Op: EOperator; Right: TLapeType = nil; Flags: ELapeEvalFlags = []): TLapeType;
 begin
   Assert(FCompiler <> nil);
-
+  if (Op in CompoundOperators) then op := op_Assign;
+  
   if (Op = op_Addr) then
     Result := FCompiler.getPointerType(Self)
   else if (Op = op_Assign) and (Right <> nil) and (getEvalRes(Op, FBaseType, Right.BaseType) <> ltUnknown) then
@@ -1499,6 +1500,8 @@ var
   method:TLapeTree_InternalMethod;
   tmpRes:TLapeType;
 begin
+  if Op in CompoundOperators then op := op_Assign;
+
   if (Right = nil) then
     Result := EvalRes(Op, TLapeType(nil), Flags)
   else
@@ -1774,11 +1777,28 @@ function TLapeType.Eval(Op: EOperator; var Dest: TResVar; Left, Right: TResVar; 
       Result := Res;
     end;
   end;
+  
+  function ResolveCompoundOp(op:EOperator; left:TResVar): EOperator;
+  begin
+    case op of
+      op_DivAsgn:
+        if (left.VarType.BaseType in LapeRealTypes) then
+          Result := op_divide
+        else
+          Result := op_DIV;
+      op_MinusAsgn: Result := op_Minus;
+      op_MulAsgn: Result := op_Multiply;
+      op_PlusAsgn: Result := op_Plus;
+      op_PowAsgn: Result := op_Power;
+    end;
+  end;
 
 var
   EvalProc: TLapeEvalProc;
   tmpResVar: TResVar;
-  method:TLapeTree_InternalMethod;
+  method: TLapeTree_InternalMethod;
+  compoundOp: Boolean;
+  exprOp: EOperator;
 begin
   Result := NullResVar;
   Assert(FCompiler <> nil);
@@ -1796,6 +1816,13 @@ begin
     Exit(Left);
   end;
 
+  CompoundOp := op in CompoundOperators;
+  if CompoundOp then
+  begin
+    exprOp := ResolveCompoundOp(op, left);
+    op := op_Assign;
+  end;
+  
   Result.VarType := EvalRes(Op, Right.VarType, Flags);
   if (not Result.HasType()) and (op = op_Deref) and ((not Left.HasType()) or (Left.VarType.BaseType = ltPointer)) then
     Result.VarType := TLapeType.Create(ltUnknown, FCompiler);
@@ -1823,7 +1850,7 @@ begin
     if (not Result.HasType()) or (not ValidEvalFunction(EvalProc)) then
       if (op = op_Dot) and ValidFieldName(Right) then
         Exit(EvalDot(PlpString(Right.VarPos.GlobalVar.Ptr)^))
-      else if (op in [op_Assign] + CompoundOperators) and Right.HasType() then
+      else if (op = op_Assign) and Right.HasType() then
         LapeExceptionFmt(lpeIncompatibleAssignment, [Right.VarType.AsString, AsString]) 
       else if (not (op in UnaryOperators)) and ((not Left.HasType()) or (not Right.HasType()) or (not Left.VarType.Equals(Right.VarType, False))) then
         if (Left.HasType() and Right.HasType() and Left.VarType.Equals(Right.VarType, False)) or
@@ -1848,12 +1875,22 @@ begin
       if (not Left.HasType()) or (not Right.HasType()) or (Dest.VarPos.MemPos <> NullResVar.VarPos.MemPos) then
         LapeException(lpeInvalidAssignment);
 
-      FCompiler.Emitter._Eval(EvalProc, Left, Right, NullResVar, Offset, Pos);
-      Result := Left;
+      if not CompoundOp then
+      begin;
+        FCompiler.Emitter._Eval(EvalProc, Left, Right, NullResVar, Offset, Pos);
+        Result := Left;
+      end else
+      begin
+        tmpResVar := NullResVar;
+        Result := Eval(op_Assign, dest, Left,
+          Eval(exprOp, tmpResVar, Left, Right, [], Offset, Pos),
+          [], Offset, Pos
+        );
+      end;
     end
     else
     begin
-      if (op in [op_Addr]+CompoundOperators) and (not Left.Writeable) then
+      if (op = op_Addr) and (not Left.Writeable) then
         LapeException(lpeVariableExpected);
       FCompiler.Emitter._Eval(EvalProc, Result, Left, Right, Offset, Pos);
     end;
