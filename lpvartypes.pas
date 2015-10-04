@@ -657,6 +657,7 @@ type
     property Options_PackRecords: UInt8 read FOptions_PackRecords write FBaseOptions_PackRecords default Lape_PackRecordsDef;
   end;
 
+function ResolveCompoundOp(op:EOperator; typ:TLapeType): EOperator; {$IFDEF Lape_Inline}inline;{$ENDIF}
 function getTypeArray(Arr: array of TLapeType): TLapeTypeArray;
 procedure ClearBaseTypes(var Arr: TLapeBaseTypes; DoFree: Boolean);
 procedure LoadBaseTypes(var Arr: TLapeBaseTypes; Compiler: TLapeCompilerBase);
@@ -694,6 +695,21 @@ implementation
 uses
   lpvartypes_ord, lpvartypes_array,
   lpexceptions, lpeval, lpinterpreter, lptree;
+
+function ResolveCompoundOp(op:EOperator; typ:TLapeType): EOperator;
+begin
+  case op of
+    op_DivAsgn:
+      if (typ.BaseType in LapeRealTypes) then
+        Result := op_divide
+      else
+        Result := op_DIV;
+    op_MinusAsgn: Result := op_Minus;
+    op_MulAsgn: Result := op_Multiply;
+    op_PlusAsgn: Result := op_Plus;
+    op_PowAsgn: Result := op_Power;
+  end;
+end;
 
 function getTypeArray(Arr: array of TLapeType): TLapeTypeArray;
 var
@@ -1466,7 +1482,8 @@ end;
 function TLapeType.EvalRes(Op: EOperator; Right: TLapeType = nil; Flags: ELapeEvalFlags = []): TLapeType;
 begin
   Assert(FCompiler <> nil);
-  if (Op in CompoundOperators) then op := op_Assign;
+  if (op in CompoundOperators) and (Right <> nil) then
+    op := ResolveCompoundOp(op, right);
   
   if (Op = op_Addr) then
     Result := FCompiler.getPointerType(Self)
@@ -1500,7 +1517,8 @@ var
   method:TLapeTree_InternalMethod;
   tmpRes:TLapeType;
 begin
-  if Op in CompoundOperators then op := op_Assign;
+  if (op in CompoundOperators) and (Right <> nil) then
+    op := ResolveCompoundOp(op, right.VarType);
 
   if (Right = nil) then
     Result := EvalRes(Op, TLapeType(nil), Flags)
@@ -1777,21 +1795,6 @@ function TLapeType.Eval(Op: EOperator; var Dest: TResVar; Left, Right: TResVar; 
       Result := Res;
     end;
   end;
-  
-  function ResolveCompoundOp(op:EOperator; left:TResVar): EOperator;
-  begin
-    case op of
-      op_DivAsgn:
-        if (left.VarType.BaseType in LapeRealTypes) then
-          Result := op_divide
-        else
-          Result := op_DIV;
-      op_MinusAsgn: Result := op_Minus;
-      op_MulAsgn: Result := op_Multiply;
-      op_PlusAsgn: Result := op_Plus;
-      op_PowAsgn: Result := op_Power;
-    end;
-  end;
 
 var
   EvalProc: TLapeEvalProc;
@@ -1819,7 +1822,7 @@ begin
   CompoundOp := op in CompoundOperators;
   if CompoundOp then
   begin
-    exprOp := ResolveCompoundOp(op, left);
+    exprOp := ResolveCompoundOp(op, Right.VarType);
     op := op_Assign;
   end;
   
@@ -1847,7 +1850,7 @@ begin
         Exit(tmpResVar);
     end;
       
-    if (not Result.HasType()) or (not ValidEvalFunction(EvalProc)) then
+    if (not CompoundOp) and ((not Result.HasType()) or (not ValidEvalFunction(EvalProc))) then
       if (op = op_Dot) and ValidFieldName(Right) then
         Exit(EvalDot(PlpString(Right.VarPos.GlobalVar.Ptr)^))
       else if (op = op_Assign) and Right.HasType() then
