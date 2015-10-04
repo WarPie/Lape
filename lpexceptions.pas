@@ -40,6 +40,7 @@ resourcestring
   lpeCannotEvalRunTime = 'Cannot be evaluated at runtime';
   lpeCannotInvoke = 'Cannot invoke identifier';
   lpeCannotOverload = 'Cannot overload function';
+  lpeCannotOverloadOperator = 'Cannot overload operator "%s"';
   lpeClosingParenthesisExpected = 'Closing parenthesis expected';
   lpeConditionalNotClosed = 'Conditional statement not properly closed';
   lpeConstantExpected = 'Constant expression expected';

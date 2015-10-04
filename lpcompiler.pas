@@ -1165,7 +1165,8 @@ begin
               DoBreak := (Tokenizer.LastTok = tk_sym_Dot) or StopAfterBeginEnd;
             end;
           tk_kw_Const, tk_kw_Var: Statement := ParseVarBlock();
-          tk_kw_Function, tk_kw_Procedure: addDelayedExpression(ParseMethod(FuncForwards));
+          tk_kw_Function, tk_kw_Procedure, tk_kw_Operator: 
+            addDelayedExpression(ParseMethod(FuncForwards));
           tk_kw_Type: ParseTypeBlock();
 
           {$IFDEF Lape_PascalLabels}
@@ -1215,24 +1216,39 @@ function TLapeCompiler.ParseMethodHeader(out Name: lpString; addToScope: Boolean
 var
   i: Integer;
   Pos: TDocPos;
-  isFunction: Boolean;
+  isFunction,isOperator: Boolean;
   Typ: TLapeDeclaration;
   Identifiers: TStringArray;
   Param: TLapeParameter;
   Token: EParserToken;
   Default: TLapeTree_ExprBase;
+  op: EOperator;
 begin
   Pos := Tokenizer.DocPos;
+  isOperator := (Tokenizer.Tok = tk_kw_Operator);
   isFunction := (Tokenizer.Tok = tk_kw_Function);
   Result := TLapeType_Method.Create(Self, nil, nil, '', @Pos);
 
   try
-
-    if isNext([tk_Identifier, tk_sym_ParenthesisOpen], Token) and (Token = tk_Identifier) then
+    if (isNext([tk_Identifier, tk_sym_ParenthesisOpen], Token) and (Token = tk_Identifier)) or
+       (isOperator and isNext(ParserToken_Operators, Token)) then
     begin
-      Name := Tokenizer.TokString;
-
-      if isNext([tk_sym_Dot, tk_sym_ParenthesisOpen], Token) and (Token = tk_sym_Dot) then
+      if not isOperator then
+        Name := Tokenizer.TokString
+      else begin
+        Name := '';
+        for op in OverloadableOperators do
+          if op_str[op] = Tokenizer.TokString then
+          begin
+            Name := '__'+op_name[op]+'__';
+            Result.isOperator := True;
+            break;
+          end;
+        if Name = '' then 
+          LapeExceptionFmt(lpeCannotOverloadOperator, [Tokenizer.TokString], Tokenizer.DocPos);
+      end;  
+        
+      if isNext([tk_sym_Dot, tk_sym_ParenthesisOpen], Token) and (Token = tk_sym_Dot) and (not isOperator) then
       begin
         Expect(tk_Identifier, True, False);
         Token := tk_NULL;
@@ -1303,7 +1319,7 @@ begin
         end;
       until (Tokenizer.Tok = tk_sym_ParenthesisClose);
 
-    if isFunction then
+    if isFunction or isOperator then
     begin
       Expect(tk_sym_Colon, True, False);
       Result.Res := ParseType(nil);
@@ -1425,9 +1441,10 @@ begin
     end;
 
     try
-      if (Tokenizer.Tok = tk_kw_Overload) then
+      if (Tokenizer.Tok = tk_kw_Overload) or FuncHeader.isOperator then
       begin
-        ParseExpressionEnd(tk_sym_SemiColon, True, False);
+        if not FuncHeader.isOperator then
+          ParseExpressionEnd(tk_sym_SemiColon, True, False);
 
         if (OldDeclaration = nil) or (not LocalDecl) or ((OldDeclaration is TLapeGlobalVar) and (TLapeGlobalVar(OldDeclaration).VarType is TLapeType_Method)) then
           with TLapeType_OverloadedMethod(addLocalDecl(TLapeType_OverloadedMethod.Create(Self, '', @Pos), FStackInfo.Owner)) do
@@ -1815,7 +1832,7 @@ function TLapeCompiler.ParseType(TypeForwards: TLapeTypeForwards; addToStackOwne
       else if (Tokenizer.Tok = tk_kw_Private) then
         BaseType := ltScriptMethod;
 
-      Expect([tk_kw_Function, tk_kw_Procedure], True, False);
+      Expect([tk_kw_Function, tk_kw_Procedure, tk_kw_Operator], True, False);
     end;
 
     Result := ParseMethodHeader(Name, False);
@@ -1922,7 +1939,7 @@ begin
         end;
       tk_sym_Caret: ParsePointer();
       tk_sym_ParenthesisOpen: ParseEnum();
-      tk_kw_Function, tk_kw_Procedure,
+      tk_kw_Function, tk_kw_Procedure, tk_kw_Operator,
       tk_kw_External, {tk_kw_Export,} tk_kw_Private: ParseMethodType();
       tk_kw_Type: ParseTypeType();
       else ParseDef();
@@ -3551,7 +3568,7 @@ begin
   OldState := getTempTokenizerState(AHeader + ';', '!addGlobalFuncHdr');
 
   try
-    Expect([tk_kw_Function, tk_kw_Procedure]);
+    Expect([tk_kw_Function, tk_kw_Procedure, tk_kw_Operator]);
     Method := ParseMethod(nil, True);
     CheckAfterCompile();
 

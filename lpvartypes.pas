@@ -352,7 +352,8 @@ type
   public
     FreeParams: Boolean;
     Res: TLapeType;
-
+    IsOperator: Boolean;
+    
     constructor Create(ACompiler: TLapeCompilerBase; AParams: TLapeParameterList; ARes: TLapeType = nil; AName: lpString = ''; ADocPos: PDocPos = nil); reintroduce; overload; virtual;
     constructor Create(ACompiler: TLapeCompilerBase; AParams: array of TLapeType; AParTypes: array of ELapeParameterType; AParDefaults: array of TLapeGlobalVar; ARes: TLapeType = nil; AName: lpString = ''; ADocPos: PDocPos = nil); reintroduce; overload; virtual;
     function CreateCopy(DeepCopy: Boolean = False): TLapeType; override;
@@ -1484,7 +1485,7 @@ begin
   Assert(FCompiler <> nil);
   if (op in CompoundOperators) and (Right <> nil) then
     op := ResolveCompoundOp(op, right);
-  
+
   if (Op = op_Addr) then
     Result := FCompiler.getPointerType(Self)
   else if (Op = op_Assign) and (Right <> nil) and (getEvalRes(Op, FBaseType, Right.BaseType) <> ltUnknown) then
@@ -2395,6 +2396,7 @@ begin
     AParams := TLapeParameterList.Create(NullParameter, dupAccept, False);
   FParams := AParams;
   Res := ARes;
+  IsOperator := False;
 end;
 
 constructor TLapeType_Method.Create(ACompiler: TLapeCompilerBase; AParams: array of TLapeType; AParTypes: array of ELapeParameterType; AParDefaults: array of TLapeGlobalVar; ARes: TLapeType = nil; AName: lpString = ''; ADocPos: PDocPos = nil);
