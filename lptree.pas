@@ -2688,7 +2688,10 @@ end;
 constructor TLapeTree_InternalMethod_OperatorOverload.Create(AOperator:EOperator; ACompiler: TLapeCompilerBase; ADocPos: PDocPos = nil);
 begin
   inherited Create(ACompiler, ADocPos);
-  self.FOperator := AOperator;
+  if AOperator = op_UnaryMinus then 
+    self.FOperator := op_Minus
+  else
+    self.FOperator := AOperator;
 end;
 
 function TLapeTree_InternalMethod_OperatorOverload.resType: TLapeType;
@@ -2700,7 +2703,7 @@ var
 begin
   if (FResType = nil) and (FOperator <> op_Unknown) then
   begin
-    if (FParams.Count <> 2) then Exit(nil);
+    if (FParams.Count < 1) then Exit(nil);
 
     methodVar := TLapeTree_GlobalVar.Create(FCompiler['__'+op_name[FOperator]+'__'], Self);
     typ := MethodVar.resType;
@@ -2736,27 +2739,30 @@ function TLapeTree_InternalMethod_OperatorOverload.Compile(var Offset: Integer):
 var
   _LapeOperator: TLapeGlobalVar;
   method:TLapeTree_Invoke;
-  param1,param2:TResVar;
+  tmpVar:TResVar;
+  i:Int32;
 begin
-  if (FParams.Count <> 2) then
-    LapeExceptionFmt(lpeWrongNumberParams, [2], DocPos);
-
+  if (FParams.Count < 1) then
+    LapeExceptionFmt(lpeWrongNumberParams, [1], DocPos);
+  
   if self.resType() = nil then
     Exit(NullResVar);
 
   Dest := NullResVar;
-  FParams[0].CompileToTempVar(Offset, Param1);
-  FParams[1].CompileToTempVar(Offset, Param2);
-
+  
   _LapeOperator := FCompiler['__'+op_name[FOperator]+'__'];
   method := TLapeTree_Invoke.Create(_LapeOperator, Self);
-  method.addParam(TLapeTree_ResVar.Create(Param1.IncLock(), Self.FParams[0]));
-  method.addParam(TLapeTree_ResVar.Create(Param2.IncLock(), Self.FParams[1]));
+
+  for i:=0 to FParams.Count - 1 do
+  begin
+    FParams[i].CompileToTempVar(Offset, tmpVar);
+    method.addParam(TLapeTree_ResVar.Create(tmpVar.IncLock(), Self.FParams[i]));
+  end;
 
   try
     Result := method.Compile(Offset);
   except
-    LapeExceptionFmt(lpeIncompatibleOperator2, [op_name[FOperator], FParams[0].resType.AsString, FParams[1].resType.AsString ]);
+    LapeException(lpeImpossible);
   end;
   method.Free();
 end;

@@ -1481,6 +1481,9 @@ begin
 end;
 
 function TLapeType.EvalRes(Op: EOperator; Right: TLapeType = nil; Flags: ELapeEvalFlags = []): TLapeType;
+var
+  method:TLapeTree_InternalMethod;
+  tmpRes:TLapeType;
 begin
   Assert(FCompiler <> nil);
   if (op in CompoundOperators) and (Right <> nil) then
@@ -1509,6 +1512,16 @@ begin
         (EvalRes(Op, Self, Flags) <> nil)
     then
       Result := EvalRes(Op, Self, Flags);
+  end;
+
+  if (lcoOpOverload in FCompiler.FOptions) and (Result = nil) and (op in UnaryOperators) and
+     (Self.BaseType <> ltUnknown) and (op in OverloadableOperators) then
+  begin
+    method := TLapeTree_InternalMethod_OperatorOverload.Create(op, FCompiler, nil);
+    method.addParam(TLapeTree_ResVar.Create(_ResVar.New(FCompiler.getTempVar(Self)), FCompiler, nil));
+    tmpRes := method.resType;
+    if tmpRes <> nil then Result := tmpRes;
+    method.Free();
   end;
 end;
 
@@ -1543,13 +1556,14 @@ begin
      Right.HasType()
   then
     Result := EvalRes(Op, Right.VarType, Flags);
-    
-  if (lcoOpOverload in FCompiler.FOptions) and (Result = nil) and(Right <> nil) and
-     (op in OverloadableOperators) and Right.HasType() and (Self.BaseType <> ltUnknown) then
+  
+  if (lcoOpOverload in FCompiler.FOptions) and (Result = nil) and (Self.BaseType <> ltUnknown) and 
+     (op in OverloadableOperators) and (((Right <> nil) and Right.HasType()) or (op in UnaryOperators)) then
   begin
     method := TLapeTree_InternalMethod_OperatorOverload.Create(op, FCompiler, nil);
     method.addParam(TLapeTree_ResVar.Create(_ResVar.New(FCompiler.getTempVar(Self)), FCompiler, nil));
-    method.addParam(TLapeTree_ResVar.Create(_ResVar.New(Right), FCompiler, nil));
+    if not (op in UnaryOperators) then
+      method.addParam(TLapeTree_ResVar.Create(_ResVar.New(Right), FCompiler, nil));
     tmpRes := method.resType;
     if tmpRes <> nil then Result := tmpRes;
     method.Free();
@@ -1797,10 +1811,24 @@ function TLapeType.Eval(Op: EOperator; var Dest: TResVar; Left, Right: TResVar; 
     end;
   end;
 
+  function TryOperatorOverload(): TResVar;
+  var method: TLapeTree_InternalMethod;
+  begin
+    if (lcoOpOverload in FCompiler.FOptions) and (op in OverloadableOperators) and
+       (Right.HasType() or (op in UnaryOperators)) and Left.HasType() then
+    begin
+      method := TLapeTree_InternalMethod_OperatorOverload.Create(op, FCompiler, Pos);
+      method.addParam(TLapeTree_ResVar.Create(Left, FCompiler, Pos));
+      if not(op in UnaryOperators) then
+        method.addParam(TLapeTree_ResVar.Create(Right, FCompiler, Pos));
+      Result := method.Compile(Offset);
+      method.Free();
+    end;
+  end;
+
 var
   EvalProc: TLapeEvalProc;
   tmpResVar: TResVar;
-  method: TLapeTree_InternalMethod;
   compoundOp: Boolean;
   exprOp: EOperator;
 begin
@@ -1838,18 +1866,6 @@ begin
       EvalProc := getEvalProc(Op, FBaseType, Right.VarType.BaseType)
     else
       EvalProc := nil;
-
-    if (lcoOpOverload in FCompiler.FOptions) and (not ValidEvalFunction(EvalProc)) and 
-       (op in OverloadableOperators) and Right.HasType() and Left.HasType() and (not Result.HasType()) then
-    begin
-      method := TLapeTree_InternalMethod_OperatorOverload.Create(op, FCompiler, Pos);
-      method.addParam(TLapeTree_ResVar.Create(Left, FCompiler, Pos));
-      method.addParam(TLapeTree_ResVar.Create(Right, FCompiler, Pos));
-      tmpResVar := method.Compile(Offset);
-      method.Free();
-      if tmpResVar.HasType() then 
-        Exit(tmpResVar);
-    end;
       
     if (not CompoundOp) and ((not Result.HasType()) or (not ValidEvalFunction(EvalProc))) then
       if (op = op_Dot) and ValidFieldName(Right) then
@@ -1862,15 +1878,26 @@ begin
           ((     Left.HasType() and      Right.HasType()) and (Left.VarType.Size  < Right.VarType.Size)  and (not TryCast(False, Result)) and (not TryCast(True, Result)))
         then
           if Right.HasType() then
+          begin
+            Result := TryOperatorOverload(); //try op-overload
+            if Result.HasType() then Exit;
             LapeExceptionFmt(lpeIncompatibleOperator2, [LapeOperatorToString(op), AsString, Right.VarType.AsString ])
+          end
           else
             LapeExceptionFmt(lpeIncompatibleOperator2, [LapeOperatorToString(op), AsString, LapeTypeToString(ltUnknown)])
         else
           Exit
       else if (op in UnaryOperators) then
+      begin
+        Result := TryOperatorOverload(); //try op-overload
+        if Result.HasType() then Exit;
         LapeExceptionFmt(lpeIncompatibleOperator1, [LapeOperatorToString(op), AsString])
-      else
+      end else
+      begin
+        Result := TryOperatorOverload(); //try op-overload
+        if Result.HasType() then Exit;
         LapeExceptionFmt(lpeIncompatibleOperator, [LapeOperatorToString(op)]);
+      end;
 
     FCompiler.getDestVar(Dest, Result, op);
 
