@@ -718,9 +718,6 @@ begin
     _LapeDelete +
     _LapeInsert
   );
-  
-  for OP in OverloadableOperators do
-    addDelayedCode('procedure __'+op_name[OP]+'__; begin end;' + LineEnding);
 end;
 
 function TLapeCompiler.EnsureExpression(Node: TLapeTree_ExprBase): TLapeTree_ExprBase;
@@ -1240,7 +1237,7 @@ begin
         for op in OverloadableOperators do
           if op_str[op] = Tokenizer.TokString then
           begin
-            Name := '__'+op_name[op]+'__';
+            Name := '!op_'+op_name[op];
             Result.isOperator := True;
             break;
           end;
@@ -1312,6 +1309,9 @@ begin
         else if (not (Param.ParType in Lape_RefParams)) then
           Expect(tk_sym_Colon, False, False);
 
+        if isOperator and (Length(Identifiers) > 2) then
+          LapeException(lpeInvalidOperator, Default.DocPos);
+          
         for i := 0 to High(Identifiers) do
         begin
           addVar(Param.ParType, Param.VarType, Identifiers[i]);

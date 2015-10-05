@@ -67,6 +67,7 @@ resourcestring
   lpeInvalidIndex = 'Invalid index "%s"';
   lpeInvalidIterator = 'Variable cannot be used for iteration';
   lpeInvalidJump = 'Invalid jump';
+  lpeInvalidOperator = 'Operator expects at most 2 parameters';
   lpeInvalidRange = 'Expression is not a valid range';
   lpeInvalidValueForType = 'Invalid value for type "%s"';
   lpeInvalidWithReference = 'Invalid with-reference';
@@ -94,7 +95,7 @@ resourcestring
   lpeWrongNumberParams = 'Wrong number of parameters found, expected %d';
   {$IFDEF Lape_NativeKeyword}lpeNativeFFIMissing = 'The native keyword requires libffi';{$ENDIF}
 
-  function LapeIFExceptionToString(Expt: LapeTIFException): String;
+function LapeIFExceptionToString(Expt: LapeTIFException): String;
 procedure LapeException(Msg: lpString); overload;
 procedure LapeException(Msg: lpString; DocPos: TDocPos); overload;
 procedure LapeException(Msg: lpString; DocPos: array of TLapeBaseDeclClass); overload;
