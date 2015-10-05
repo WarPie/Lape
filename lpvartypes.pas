@@ -1893,6 +1893,7 @@ begin
     except
       on e: Exception do
       begin
+        Dest := NullResVar;
         Result := TryOperatorOverload();
         if Result.HasType() then
           Exit;
