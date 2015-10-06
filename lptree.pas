@@ -5693,7 +5693,7 @@ var
   IncDec: TLapeTree_InternalMethod;
   tmpBody: TLapeTree_Base;
   tmpContinueStatements: TLapeFlowStatementList;
-  arr,tmpVar: TResVar;
+  limVar,tmpVar: TResVar;
 begin
   Assert((FCondition <> nil) and (FCondition is TLapeTree_Operator));
   Assert((TLapeTree_Operator(FCondition).Right <> nil) and (TLapeTree_Operator(FCondition).Right is TLapeTree_ResVar));
@@ -5702,21 +5702,22 @@ begin
 
   if walkIn then
   begin
-    FLimit.CompileToTempVar(Offset, arr);
+    FLimit.CompileToTempVar(Offset, limVar);
     FCounter.CompileToTempVar(Offset, tmpVar);
-    with TLapeTree_Operator.Create(op_Assign, FCompiler) do
+
+    with TLapeTree_Operator.Create(op_Assign, FCompiler, @_DocPos) do
     try
       Left := TLapeTree_ResVar.Create(tmpVar.IncLock(), FCounter);
       Right := TLapeTree_Operator.Create(op_Index, FCompiler);
       with TLapeTree_Operator(Right) do
       begin
-        Left := TLapeTree_ResVar.Create(Arr.IncLock(), FLimit);
+        Left := TLapeTree_ResVar.Create(limVar.IncLock(), FLimit);
         Right := TLapeTree_ResVar.Create(TLapeTree_Operator(FCondition).Left.Compile(Offset).IncLock(), FCondition);
       end;
       Compile(Offset);
     finally
       Free();
-      arr.Spill(1);
+      limVar.Spill(1);
       tmpVar.Spill(1);
     end;
   end;
@@ -5830,18 +5831,14 @@ end;
 
 function TLapeTree_For.CompileForIn(var Offset: Integer): TResVar;
 var
-  Arr, upper,lower, hiVar: TResVar;
+  arr, upper, lower: TResVar;
   tmpExpr, method: TLapeTree_ExprBase;
-  baseTyp: ELapeBaseType;
 begin
   Result := NullResVar;
 
-  if (not FLimit.CompileToTempVar(Offset, arr)) or (not arr.HasType()) or
-     (not(arr.VarType.BaseType in [ltDynArray,ltStaticArray]+LapeStringTypes)) then
+  if (not FLimit.CompileToTempVar(Offset, arr)) or (not arr.HasType()) then
     LapeException(lpeInvalidEvaluation, FLimit.DocPos);
 
-  // low
-  baseTyp := arr.VarType.BaseType;
   try
     lower := _ResVar.New(FCompiler.getTempVar(ltInt32));
     tmpExpr := TLapeTree_ResVar.Create(lower.IncLock(2), FCompiler);
@@ -5875,9 +5872,6 @@ begin
   finally
     tmpExpr.Free();
   end;
-
-  if not TLapeType_Pointer(arr.VarType).PType.CompatibleWith(FCounter.resType) then
-    LapeExceptionFmt(lpeIncompatibleAssignment,  [TLapeType_Pointer(arr.VarType).PType.AsString, FCounter.resType.AsString], FCounter.DocPos);
 
   try
     FCondition := TLapeTree_Operator.Create(op_cmp_LessThanOrEqual, Self);
