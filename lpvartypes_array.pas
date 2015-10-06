@@ -64,7 +64,8 @@ type
     function VarToString(AVar: Pointer): lpString; override;
     procedure VarUnique(var AVar: Pointer); overload; virtual;
     procedure VarUnique(AVar: TResVar; var Offset: Integer; Pos: PDocPos = nil); overload; virtual;
-
+    function VarLo(AVar: Pointer = nil): TLapeGlobalVar; override;
+    
     function NewGlobalVarStr(Str: AnsiString; AName: lpString = ''; ADocPos: PDocPos = nil): TLapeGlobalVar; override;
     function NewGlobalVar(Str: AnsiString; AName: lpString = ''; ADocPos: PDocPos = nil): TLapeGlobalVar; reintroduce; overload; virtual;
     function NewGlobalVarStr(Str: UnicodeString; AName: lpString = ''; ADocPos: PDocPos = nil): TLapeGlobalVar; override;
@@ -87,7 +88,8 @@ type
   public
     constructor Create(ACompiler: TLapeCompilerBase; ASize: UInt8 = High(UInt8); AName: lpString = ''; ADocPos: PDocPos = nil); reintroduce; virtual;
     function VarToString(AVar: Pointer): lpString; override;
-
+    function VarLo(AVar: Pointer = nil): TLapeGlobalVar; override;
+    
     function NewGlobalVarStr(Str: UnicodeString; AName: lpString = ''; ADocPos: PDocPos = nil): TLapeGlobalVar; override;
     function NewGlobalVar(Str: ShortString; AName: lpString = ''; ADocPos: PDocPos = nil): TLapeGlobalVar; reintroduce; overload; virtual;
 
@@ -1044,6 +1046,14 @@ begin
   end;
 end;
 
+function TLapeType_String.VarLo(AVar: Pointer = nil): TLapeGlobalVar;
+begin
+  if (FCompiler = nil) then
+    Result := nil
+  else
+    Result := FCompiler.getConstant(1);   
+end;
+
 function TLapeType_String.NewGlobalVarStr(Str: AnsiString; AName: lpString = ''; ADocPos: PDocPos = nil): TLapeGlobalVar;
 begin
   Result := NewGlobalVarP(nil, AName, ADocPos);
@@ -1171,6 +1181,14 @@ end;
 function TLapeType_ShortString.VarToString(AVar: Pointer): lpString;
 begin
   Result := '"'+PShortString(AVar)^+'"';
+end;
+
+function TLapeType_ShortString.VarLo(AVar: Pointer = nil): TLapeGlobalVar;
+begin
+  if (FCompiler = nil) then
+    Result := nil
+  else
+    Result := FCompiler.getConstant(1);
 end;
 
 function TLapeType_ShortString.NewGlobalVarStr(Str: UnicodeString; AName: lpString = ''; ADocPos: PDocPos = nil): TLapeGlobalVar;
